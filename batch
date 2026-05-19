@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Roast Calculator</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; }
+    #root { max-width: 680px; margin: 0 auto; padding: 2rem 1rem; }
+    h1 { font-size: 22px; font-weight: 500; margin-bottom: 1.5rem; }
+    input[type=number], input[type=text] { border: 0.5px solid #ccc; border-radius: 8px; padding: 8px 10px; font-size: 14px; width: 100%; background: #fff; color: #1a1a1a; }
+    input:focus { outline: 2px solid #378add; outline-offset: 1px; }
+    button { border: 0.5px solid #ccc; border-radius: 8px; padding: 8px 14px; font-size: 13px; background: #fff; color: #1a1a1a; cursor: pointer; }
+    button:hover { background: #f0f0f0; }
+    .tab-bar { display: flex; gap: 4px; border-bottom: 0.5px solid #ddd; margin-bottom: 1.5rem; }
+    .tab { padding: 8px 18px; font-size: 14px; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: #888; border-radius: 0; }
+    .tab.active { border-bottom-color: #1a1a1a; color: #1a1a1a; font-weight: 500; }
+    .card { background: #fff; border: 0.5px solid #ddd; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 10px; }
+    .metric { background: #f5f5f0; border-radius: 8px; padding: 0.75rem; }
+    .metric p { font-size: 12px; color: #888; margin-bottom: 4px; }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; }
+    .badge-blend { background: #e6f1fb; color: #185fa5; }
+    .badge-origin { background: #eaf3de; color: #3b6d11; }
+    .summary { border: 2px solid #b5d4f4; border-radius: 12px; padding: 1.25rem 1.5rem; margin-top: 8px; background: #fff; }
+    .divider { height: 0.5px; background: #eee; margin: 14px 0; }
+    .save-status { font-size: 12px; color: #888; margin-left: 12px; }
+    .danger { color: #a32d2d; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const SUPABASE_URL = "https://hkmcwhernqokpycmkeof.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrbWN3aGVybnFva3B5Y21rZW9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTkyODksImV4cCI6MjA5NDc5NTI4OX0.Tc4SzUuM26QTD976A7Jq36rsGuDoroJvbkEXzhUG8hE";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const DEFAULT_BLENDS = [
+  { id: "b1", name: "House Blend", type: "blend", water_loss: 14, batch_size: 44 },
+  { id: "b2", name: "Espresso Blend", type: "blend", water_loss: 15, batch_size: 44 },
+  { id: "b3", name: "Dark Blend", type: "blend", water_loss: 16, batch_size: 44 },
+  { id: "b4", name: "Seasonal Blend", type: "blend", water_loss: 14, batch_size: 44 },
+];
+
+function lbsFromBag(qty, size) {
+  if (size === "10oz") return qty * 10 / 16;
+  if (size === "12oz") return qty * 12 / 16;
+  if (size === "5lb") return qty * 5;
+  return 0;
+}
+
+function ProfileCard({ profile, onUpdate, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(profile.name);
+  const isBlend = profile.type === "blend";
+  const commit = () => { onUpdate({ ...profile, name: draft.trim() || profile.name }); setEditing(false); };
+  return (
+    <div className="card">
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          {editing
+            ? <input value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === "Enter" && commit()} onBlur={commit} autoFocus />
+            : <span style={{ fontSize: 15, fontWeight: 500 }}>{profile.name}</span>}
+        </div>
+        <span className={`badge ${isBlend ? "badge-blend" : "badge-origin"}`}>{isBlend ? "blend" : "single origin"}</span>
+        {editing
+          ? <button onClick={commit}>Save</button>
+          : <button onClick={() => { setDraft(profile.name); setEditing(true); }}>Rename</button>}
+        {!isBlend && <button style={{ color: "#a32d2d" }} onClick={onDelete}>Remove</button>}
+      </div>
+      <div className="grid-2">
+        <div>
+          <p style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>Water loss %</p>
+          <input type="number" min="0" max="30" step="0.5" value={profile.water_loss}
+            onChange={e => onUpdate({ ...profile, water_loss: parseFloat(e.target.value) || 0 })} />
+        </div>
+        <div>
+          <p style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>Batch size (lbs)</p>
+          <input type="number" min="1" max="100" value={profile.batch_size}
+            onChange={e => onUpdate({ ...profile, batch_size: parseFloat(e.target.value) || 1 })} />
+        </div>
+      </div>
+      <p style={{ fontSize: 12, color: "#888", marginTop: 8 }}>Bag sizes: {isBlend ? "12 oz, 5 lb" : "10 oz, 12 oz, 5 lb"}</p>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState("calc");
+  const [profiles, setProfiles] = useState([]);
+  const [orders, setOrders] = useState({});
+  const [newName, setNewName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      const { data, error } = await sb.from("profiles").select("*").order("type").order("id");
+      if (error || !data || data.length === 0) {
+        await sb.from("profiles").insert(DEFAULT_BLENDS);
+        setProfiles(DEFAULT_BLENDS);
+      } else {
+        setProfiles(data);
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  async function saveProfile(updated) {
+    setSaveStatus("Saving...");
+    await sb.from("profiles").upsert(updated);
+    setSaveStatus("Saved ✓");
+    setTimeout(() => setSaveStatus(""), 1500);
+  }
+
+  function updateProfile(updated) {
+    setProfiles(ps => ps.map(p => p.id === updated.id ? updated : p));
+    saveProfile(updated);
+  }
+
+  async function deleteProfile(id) {
+    setProfiles(ps => ps.filter(p => p.id !== id));
+    await sb.from("profiles").delete().eq("id", id);
+  }
+
+  async function addOrigin() {
+    if (!newName.trim()) return;
+    const origins = profiles.filter(p => p.type === "origin");
+    if (origins.length >= 7) { alert("Max 7 single origins."); return; }
+    const np = { id: "o" + Date.now(), name: newName.trim(), type: "origin", water_loss: 13, batch_size: 44 };
+    setProfiles(ps => [...ps, np]);
+    await sb.from("profiles").insert(np);
+    setNewName("");
+  }
+
+  function getOrder(pid, size) { return orders[pid + "_" + size] || 0; }
+  function setOrder(pid, size, val) { setOrders(o => ({ ...o, [pid + "_" + size]: parseFloat(val) || 0 })); }
+
+  function calcProfile(p) {
+    const sizes = p.type === "blend" ? ["12oz", "5lb"] : ["10oz", "12oz", "5lb"];
+    const orderedLbs = sizes.reduce((s, sz) => s + lbsFromBag(getOrder(p.id, sz), sz), 0);
+    const wl = (p.water_loss || 0) / 100;
+    const greenLbs = wl < 1 ? orderedLbs / (1 - wl) : orderedLbs;
+    const batches = orderedLbs > 0 ? Math.ceil(greenLbs / p.batch_size) : 0;
+    return { orderedLbs, greenLbs, batches, sizes };
+  }
+
+  const totalBatches = profiles.reduce((s, p) => s + calcProfile(p).batches, 0);
+  const totalGreen = profiles.reduce((s, p) => s + calcProfile(p).greenLbs, 0);
+
+  if (loading) return React.createElement("div", { style: { padding: "3rem", textAlign: "center", color: "#888" } }, "Loading your roast data...");
+
+  return (
+    <div>
+      <h1>Roast Calculator</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="tab-bar" style={{ flex: 1, marginBottom: 0 }}>
+          <button className={"tab" + (tab === "calc" ? " active" : "")} onClick={() => setTab("calc")}>Calculator</button>
+          <button className={"tab" + (tab === "profiles" ? " active" : "")} onClick={() => setTab("profiles")}>Profiles</button>
+        </div>
+        {saveStatus && <span className="save-status">{saveStatus}</span>}
+      </div>
+      <div style={{ height: "0.5px", background: "#ddd", marginBottom: "1.5rem" }} />
+
+      {tab === "calc" && (
+        <div>
+          {profiles.map(p => {
+            const { orderedLbs, greenLbs, batches, sizes } = calcProfile(p);
+            return (
+              <div key={p.id} style={{ marginBottom: "1.5rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontWeight: 500, fontSize: 15 }}>{p.name}</span>
+                  <span className={"badge " + (p.type === "blend" ? "badge-blend" : "badge-origin")}>
+                    {p.type === "blend" ? "blend" : "single origin"}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(" + sizes.length + ", 1fr)", gap: 10, marginBottom: 8 }}>
+                  {sizes.map(s => (
+                    <div key={s} className="metric">
+                      <p>{s} bags</p>
+                      <input type="number" min="0" value={getOrder(p.id, s)}
+                        onChange={e => setOrder(p.id, s, e.target.value)}
+                        style={{ fontSize: 18, fontWeight: 500, border: "none", background: "transparent", outline: "none", padding: 0, width: "100%" }} />
+                    </div>
+                  ))}
+                </div>
+                {orderedLbs > 0 && (
+                  <div style={{ fontSize: 13, color: "#888" }}>
+                    {orderedLbs.toFixed(2)} lbs ordered &rarr; {greenLbs.toFixed(2)} lbs green &rarr;{" "}
+                    <strong style={{ color: "#185fa5" }}>{batches} batch{batches !== 1 ? "es" : ""}</strong>
+                  </div>
+                )}
+                <div className="divider" />
+              </div>
+            );
+          })}
+          <div className="summary">
+            <p style={{ fontSize: 13, color: "#888", marginBottom: 4 }}>Total batches today</p>
+            <p style={{ fontSize: 36, fontWeight: 500, color: "#185fa5" }}>{totalBatches}</p>
+            <p style={{ fontSize: 13, color: "#888", marginTop: 4 }}>{totalGreen.toFixed(2)} lbs green coffee total</p>
+          </div>
+        </div>
+      )}
+
+      {tab === "profiles" && (
+        <div>
+          <p style={{ fontWeight: 500, fontSize: 15, marginBottom: 10 }}>Blends</p>
+          {profiles.filter(p => p.type === "blend").map(p => (
+            <ProfileCard key={p.id} profile={p} onUpdate={updateProfile} onDelete={() => {}} />
+          ))}
+          <p style={{ fontWeight: 500, fontSize: 15, margin: "1.5rem 0 10px" }}>
+            Single origins ({profiles.filter(p => p.type === "origin").length}/7)
+          </p>
+          {profiles.filter(p => p.type === "origin").map(p => (
+            <ProfileCard key={p.id} profile={p} onUpdate={updateProfile} onDelete={() => deleteProfile(p.id)} />
+          ))}
+          {profiles.filter(p => p.type === "origin").length < 7 && (
+            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+              <input type="text" placeholder="New single origin name" value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addOrigin()} />
+              <button onClick={addOrigin}>+ Add</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
